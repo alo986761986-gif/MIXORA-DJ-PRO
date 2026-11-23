@@ -32,7 +32,7 @@ Section "Installazione" SEC_MAIN
   SetOutPath "$INSTDIR"
   ; Put executable at installation root, fail instead of creating broken shortcuts.
   SetOverwrite on
-  File /oname="MIXORA DJ PRO.exe" "${STAGEDIR}\MIXORA DJ PRO.exe"
+  File "${STAGEDIR}\MIXORA DJ PRO.exe"
   File /r /x "MIXORA DJ PRO.exe" "${STAGEDIR}\*.*"
   IfFileExists "$INSTDIR\MIXORA DJ PRO.exe" executable_ok executable_missing
   executable_missing:
