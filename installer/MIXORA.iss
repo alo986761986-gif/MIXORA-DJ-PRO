@@ -1,5 +1,5 @@
 #define MyAppName "MIXORA DJ PRO"
-#define MyAppVersion "2.5.2"
+#define MyAppVersion "2.6.0"
 #ifndef StageDir
   #error StageDir must point to the built and deployed Windows application folder.
 #endif
@@ -13,7 +13,7 @@ DefaultDirName={localappdata}\Programs\MIXORA DJ PRO
 DefaultGroupName=MIXORA DJ PRO
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-OutputBaseFilename=MIXORA_DJ_PRO_2_5_2_Setup_x64
+OutputBaseFilename=MIXORA_DJ_PRO_2_6_Setup_x64
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
