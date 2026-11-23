@@ -217,9 +217,23 @@ for(int d=0;d<2;++d){
     engine_->setPlaying(d,!engine_->playing(d));updatePlayButtons();
    });
   }
-  root->addLayout(deckRow,5);
+  auto* mixerPanel=new QGroupBox("MIXER / 2 CHANNELS");
+   mixerPanel->setMinimumWidth(195);mixerPanel->setMaximumWidth(260);
+   auto* mixerLayout=new QVBoxLayout(mixerPanel);mixerLayout->setSpacing(12);
+   auto* mixerTitle=new QLabel("MIXORA MIXER");
+   mixerTitle->setAlignment(Qt::AlignCenter);mixerTitle->setStyleSheet("color:#78cbec;font-size:14px;font-weight:700;");
+   mixerLayout->addWidget(mixerTitle);
+   auto* channels=new QLabel("CHANNEL A                CHANNEL B");
+   channels->setAlignment(Qt::AlignCenter);channels->setStyleSheet("color:#a4c3d5;font-size:10px;");
+   mixerLayout->addWidget(channels);
+   auto* mixInfo=new QLabel("EQ A/B  ·  LOW / MID / HIGH\nGAIN indipendente");
+   mixInfo->setAlignment(Qt::AlignCenter);mixInfo->setStyleSheet("color:#839eaf;font-size:11px;");
+   mixerLayout->addWidget(mixInfo);
+   mixerLayout->addStretch();
+   deckRow->insertWidget(1,mixerPanel,1);
+   root->addLayout(deckRow,5);
    auto* masterRow=new QHBoxLayout;masterRow->addWidget(new QLabel("CROSSFADER  A — B"));cross_=new QSlider(Qt::Horizontal);cross_->setRange(0,100);cross_->setValue(50);masterRow->addWidget(cross_,2);
-  masterRow->addWidget(new QLabel("MASTER"));master_=new QSlider(Qt::Horizontal);master_->setRange(0,100);master_->setValue(75);masterRow->addWidget(master_,1);root->addLayout(masterRow);
+  masterRow->addWidget(new QLabel("MASTER"));master_=new QSlider(Qt::Horizontal);master_->setRange(0,100);master_->setValue(75);masterRow->addWidget(master_,1);mixerLayout->addLayout(masterRow);
   connect(cross_,&QSlider::valueChanged,this,[this](int x){if(engine_)engine_->setCrossfader(x/100.);});
   connect(master_,&QSlider::valueChanged,this,[this](int x){if(engine_)engine_->setMaster(x/100.);});
   auto* midiRow=new QHBoxLayout;
@@ -266,7 +280,50 @@ for(int d=0;d<2;++d){
   });
   connect(midiOutputPorts_,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int){if(ledEnabled_->isChecked())ledEnabled_->setChecked(false);});
   for(int d=0;d<2;++d)connect(syncButtons_[d],&QPushButton::toggled,this,[this](bool){sendSyncLeds();});
-  auto* stop=new QPushButton("STOP DECK A + B");root->addWidget(stop);
+  auto* libraryGroup=new QGroupBox("TRACK COLLECTION / LIBRERIA MUSICALE");
+   libraryGroup->setMinimumHeight(175);
+   auto* libraryLayout=new QVBoxLayout(libraryGroup);
+   auto* libTools=new QHBoxLayout;
+   auto* folderButton=new QPushButton("IMPORTA CARTELLA");
+   auto* filesButton=new QPushButton("+ BRANI");
+   librarySearch_=new QLineEdit;librarySearch_->setPlaceholderText("Cerca titolo o cartella...");
+   auto* loadA=new QPushButton("LOAD A");
+   auto* loadB=new QPushButton("LOAD B");
+   libTools->addWidget(folderButton);libTools->addWidget(filesButton);
+   libTools->addWidget(librarySearch_,1);libTools->addWidget(loadA);libTools->addWidget(loadB);
+   libraryLayout->addLayout(libTools);
+   library_=new QTreeWidget;library_->setColumnCount(3);
+   library_->setHeaderLabels(QStringList{"TITOLO","FORMATO","CARTELLA"});
+   library_->setAlternatingRowColors(true);library_->setRootIsDecorated(false);
+   library_->header()->setSectionResizeMode(0,QHeaderView::Stretch);
+   libraryLayout->addWidget(library_,1);
+   root->addWidget(libraryGroup,2);
+   auto loadSelected=[this](int deck){auto* item=library_->currentItem();if(item)loadDeckFile(deck,item->data(0,Qt::UserRole).toString());};
+   connect(loadA,&QPushButton::clicked,this,[loadSelected]{loadSelected(0);});
+   connect(loadB,&QPushButton::clicked,this,[loadSelected]{loadSelected(1);});
+   connect(library_,&QTreeWidget::itemDoubleClicked,this,[loadSelected](QTreeWidgetItem*,int){loadSelected(0);});
+   connect(librarySearch_,&QLineEdit::textChanged,this,[this](const QString& q){
+     for(int i=0;i<library_->topLevelItemCount();++i){
+       auto* item=library_->topLevelItem(i);
+       item->setHidden(!q.isEmpty() && !item->text(0).contains(q,Qt::CaseInsensitive) && !item->text(2).contains(q,Qt::CaseInsensitive));
+     }
+   });
+   connect(folderButton,&QPushButton::clicked,this,[this]{
+     const auto folder=QFileDialog::getExistingDirectory(this,"Importa cartella musicale");
+     if(folder.isEmpty())return;
+     QDirIterator files(folder,QStringList{"*.mp3","*.wav","*.flac","*.ogg","*.m4a","*.aac"},QDir::Files,QDirIterator::Subdirectories);
+     int added=0;
+     while(files.hasNext()&&added<10000)added+=addLibraryTrack(files.next());
+     if(status_)status_->setText(QString("Aggiunti %1 brani").arg(added));
+   });
+   connect(filesButton,&QPushButton::clicked,this,[this]{
+     const auto files=QFileDialog::getOpenFileNames(this,"Importa musica","","Audio (*.wav *.mp3 *.flac *.ogg *.m4a *.aac)");
+     int added=0;for(const auto& f:files)added+=addLibraryTrack(f);
+     if(status_)status_->setText(QString("Aggiunti %1 brani").arg(added));
+   });
+   restoreLibrary();
+   root->addWidget(advancedPanel);
+   auto* stop=new QPushButton("STOP A + B");root->addWidget(stop);
   connect(stop,&QPushButton::clicked,this,[this]{if(!engine_)return;for(int d=0;d<2;++d){engine_->setPlaying(d,false);engine_->seek(d,0);}updatePlayButtons();});
   status_=new QLabel("Carica il primo brano per inizializzare l'audio.");status_->setWordWrap(true);root->addWidget(status_);
   auto* warning=new QLabel("ATTENZIONE: prototipo realtime: MP3/FLAC dipendono dai codec Qt. Per il Cue reale seleziona 4 canali e una scheda con uscite 1/2 e 3/4 indipendenti. Non provato con Z1. EQ non anti-click, nessun limiter true-peak: non usare durante esibizioni.");warning->setWordWrap(true);warning->setStyleSheet("color:#e3b77b");root->addWidget(warning);
@@ -275,7 +332,21 @@ for(int d=0;d<2;++d){
   auto* uiTimer=new QTimer(this);uiTimer->setInterval(200);connect(uiTimer,&QTimer::timeout,this,[this]{updatePlayButtons();updateProgress();});uiTimer->start();
  }
 private:
- void restoreBindings(){
+ int addLibraryTrack(const QString& path){
+   const QFileInfo info(path);const auto full=info.absoluteFilePath();
+   if(!info.isFile()||libraryPaths_.contains(full,Qt::CaseInsensitive))return 0;
+   auto* item=new QTreeWidgetItem(library_);
+   item->setText(0,info.completeBaseName());item->setText(1,info.suffix().toUpper());
+   item->setText(2,info.absolutePath());item->setData(0,Qt::UserRole,full);
+   libraryPaths_.append(full);
+   QSettings("MIXORA","DJ PRO").setValue("library/files",libraryPaths_);
+   return 1;
+  }
+  void restoreLibrary(){
+   const auto saved=QSettings("MIXORA","DJ PRO").value("library/files").toStringList();
+   for(const auto& f:saved)if(QFileInfo::exists(f))addLibraryTrack(f);
+  }
+  void restoreBindings(){
   QSettings settings("MIXORA","DJ PRO");
   QSettings oldSettings("MIXORA","DJ PRO 2.4");
   // Read old identity-bound profiles only when the new app has no saved bindings.
