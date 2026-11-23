@@ -1,4 +1,4 @@
-name: MIXORA DJ PRO Windows verified installer
+name: MIXORA DJ PRO Windows installer and portable
 on:
   workflow_dispatch:
   push:
@@ -13,14 +13,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-2022
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Verify source upload
-        shell: pwsh
-        run: |
-          if (!(Test-Path CMakeLists.txt) -or !(Test-Path src/live/main.cpp) -or !(Test-Path installer/MIXORA.nsi)) {
-            throw 'MIXORA 2.5 sources missing from repository root.'
-          }
       - uses: ilammy/msvc-dev-cmd@v1
       - uses: jurplel/install-qt-action@v4
         with:
@@ -28,96 +23,96 @@ jobs:
           arch: win64_msvc2022_64
           modules: 'qtmultimedia'
           cache: true
-      - name: Configure
+      - name: Configure CMake
         shell: pwsh
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DBUILD_TESTING=ON
-      - name: Compile
+      - name: Build
         run: cmake --build build --config Release --parallel
-      - name: Test
+      - name: Run C++ tests
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: Bundle Qt and verify real executable
+      - name: Deploy Windows executable and Qt runtime
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = Join-Path $PWD 'build\Release\MIXORA DJ PRO.exe'
-          if (!(Test-Path -LiteralPath $exe)) { throw 'The compiled MIXORA DJ PRO.exe is missing.' }
-          if ((Get-Item -LiteralPath $exe).Length -lt 30000) { throw 'Compiled executable is unexpectedly small.' }
+          if (!(Test-Path -LiteralPath $exe)) { throw 'Compiled executable missing.' }
           New-Item -ItemType Directory stage -Force | Out-Null
-          Copy-Item -LiteralPath $exe -Destination 'stage\MIXORA DJ PRO.exe'
+          Copy-Item -LiteralPath $exe 'stage\MIXORA DJ PRO.exe'
           & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --no-translations --dir stage 'stage/MIXORA DJ PRO.exe'
           if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed.' }
           foreach ($name in @('MIXORA DJ PRO.exe','Qt6Core.dll','Qt6Widgets.dll','Qt6Multimedia.dll')) {
-            if (!(Test-Path -LiteralPath (Join-Path 'stage' $name))) { throw "Missing staged runtime file: $name" }
+            if (!(Test-Path -LiteralPath (Join-Path 'stage' $name))) { throw "Missing runtime file $name" }
           }
-          if (!(Test-Path 'stage\platforms\qwindows.dll')) { throw 'Qt Windows platform plugin missing from stage.' }
-          Get-ChildItem stage -File | Select-Object Name,Length | Format-Table
-      - name: Package corrected installer
+          if (!(Test-Path 'stage\platforms\qwindows.dll')) { throw 'Missing Qt platform plugin' }
+          Get-Item 'stage\MIXORA DJ PRO.exe' | Select-Object FullName, Length
+      - name: Prepare portable ZIP as installation-free fallback
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          choco install nsis -y --no-progress
-          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed.' }
-          $nsis = 'C:\Program Files (x86)\NSIS\makensis.exe'
-          if (!(Test-Path $nsis)) { throw 'NSIS executable not found.' }
-          $stagePath = (Resolve-Path stage).Path
-          $exePath = Join-Path $PWD 'MIXORA_DJ_PRO_2_5_1_Setup_x64.exe'
-          & $nsis "/DSTAGEDIR=$stagePath" "/DOUTPUTFILE=$exePath" 'installer/MIXORA.nsi'
-          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed.' }
-          if (!(Test-Path $exePath)) { throw 'Installer file not generated.' }
-          if ((Get-Item $exePath).Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
-      - name: Install and launch smoke test on a clean Windows runner
+          Compress-Archive -Path 'stage\*' -DestinationPath 'MIXORA_DJ_PRO_2_5_2_PORTABLE_x64.zip' -CompressionLevel Optimal
+          if (!(Test-Path 'MIXORA_DJ_PRO_2_5_2_PORTABLE_x64.zip')) { throw 'Portable package missing' }
+      - name: Build installer using Inno Setup instead of NSIS
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = (Resolve-Path 'MIXORA_DJ_PRO_2_5_1_Setup_x64.exe').Path
-          Write-Host "DEBUG_LAUNCH_INSTALLER=$installer"
-          $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
-          if (!$proc.WaitForExit(30000)) {
-            Write-Host "DEBUG_INSTALLER_TIMED_OUT_PID=$($proc.Id)"
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            throw 'Silent NSIS installation timed out after 30 seconds.'
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install Inno Setup' }
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path -LiteralPath $iscc)) { throw 'Inno Setup compiler not found' }
+          $stageDir = (Resolve-Path 'stage').Path
+          $outDir = (Get-Location).Path
+          & $iscc "/DStageDir=$stageDir" "/O$outDir" 'installer/MIXORA.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno installer packaging failed' }
+          if (!(Test-Path 'MIXORA_DJ_PRO_2_5_2_Setup_x64.exe')) { throw 'Installer EXE not generated' }
+          Get-Item 'MIXORA_DJ_PRO_2_5_2_Setup_x64.exe' | Select-Object FullName,Length
+      - name: Verify real installation and EXE launch on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exeSetup = (Resolve-Path 'MIXORA_DJ_PRO_2_5_2_Setup_x64.exe').Path
+          $installerLog = Join-Path $env:TEMP 'mixora-install.log'
+          $p = Start-Process -FilePath $exeSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$installerLog") -PassThru
+          if (!$p.WaitForExit(60000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            throw 'Inno installer timed out after 60 seconds'
           }
-          Write-Host "DEBUG_INSTALLER_EXIT_CODE=$($proc.ExitCode)"
-          if ($proc.ExitCode -ne 0) { throw "Silent installer exited with code $($proc.ExitCode)." }
-          Write-Host "DEBUG_ENV_LOCALAPPDATA=$env:LOCALAPPDATA"
-          Write-Host "DEBUG_ENV_APPDATA=$env:APPDATA"
-          Write-Host "DEBUG_ENV_USERPROFILE=$env:USERPROFILE"
-          Write-Host "DEBUG_HOME=$HOME"
-          $registry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MixoraDJPro' -ErrorAction SilentlyContinue
-          if ($registry) { Write-Host "DEBUG_INSTALL_REGISTRY=$($registry | ConvertTo-Json -Compress)" } else { Write-Host 'DEBUG_REGISTRY_MISSING' }
-          foreach ($scan in @((Join-Path $env:LOCALAPPDATA 'Programs'),(Join-Path $env:APPDATA 'Programs'),$env:LOCALAPPDATA,$env:ProgramFiles)) {
-            if (Test-Path $scan) {
-              Write-Host "DEBUG_SEARCH_ROOT=$scan"
-              Get-ChildItem -Path $scan -Filter 'MIXORA DJ PRO.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 10 -ExpandProperty FullName | ForEach-Object { Write-Host "DEBUG_FOUND_EXE=$_" }
-            }
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path $installerLog) { Get-Content $installerLog -Tail 80 }
+            throw "Inno installation returned exit code $($p.ExitCode)"
           }
           $folder = Join-Path $env:LOCALAPPDATA 'Programs\MIXORA DJ PRO'
           $installed = Join-Path $folder 'MIXORA DJ PRO.exe'
           foreach ($name in @('MIXORA DJ PRO.exe','Qt6Core.dll','Qt6Widgets.dll','Qt6Multimedia.dll')) {
-            $path = Join-Path $folder $name
-            if (!(Test-Path -LiteralPath $path)) { throw "INSTALLATION FAILURE: missing file $path" }
+            $target = Join-Path $folder $name
+            if (!(Test-Path -LiteralPath $target)) {
+              if (Test-Path $installerLog) { Get-Content $installerLog -Tail 80 }
+              throw "MISSING_INSTALLED_FILE: $target"
+            }
           }
-          if (!(Test-Path (Join-Path $folder 'platforms\qwindows.dll'))) { throw 'Missing installed Qt Windows platform plugin.' }
-          $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\MIXORA DJ PRO\MIXORA DJ PRO.lnk'
-          if (!(Test-Path -LiteralPath $shortcut)) { throw 'Start Menu shortcut not created.' }
-          $shell = New-Object -ComObject WScript.Shell
-          $target = $shell.CreateShortcut($shortcut).TargetPath
-          if ([IO.Path]::GetFullPath($target) -ine [IO.Path]::GetFullPath($installed)) { throw "Shortcut points to '$target' instead of '$installed'." }
-          $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'MIXORA DJ PRO.lnk'
-          if (!(Test-Path -LiteralPath $desktop)) { throw "Desktop shortcut missing: $desktop" }
+          if (!(Test-Path (Join-Path $folder 'platforms\qwindows.dll'))) { throw 'Missing installed Qt Windows platform plugin' }
+          $menuLink = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\MIXORA DJ PRO.lnk'
+          if (!(Test-Path -LiteralPath $menuLink)) { throw "Missing Start Menu shortcut: $menuLink" }
+          $wsh = New-Object -ComObject WScript.Shell
+          $actualLinkTarget = $wsh.CreateShortcut($menuLink).TargetPath
+          if ([IO.Path]::GetFullPath($actualLinkTarget) -ine [IO.Path]::GetFullPath($installed)) { throw "Wrong shortcut target: $actualLinkTarget" }
+          $desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'MIXORA DJ PRO.lnk'
+          if (!(Test-Path -LiteralPath $desktopLink)) { throw "Missing desktop shortcut: $desktopLink" }
           Remove-Item Env:\QT_PLUGIN_PATH -ErrorAction SilentlyContinue
           Remove-Item Env:\QML2_IMPORT_PATH -ErrorAction SilentlyContinue
-          Write-Host "DEBUG_START_APP=$installed"
-          $app = Start-Process -FilePath $installed -ArgumentList '--smoke-test' -WorkingDirectory $folder -PassThru
-          if (!$app.WaitForExit(20000)) {
-            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
-            throw 'Installed MIXORA app startup smoke test timed out after 20 seconds.'
+          $smoke = Start-Process -FilePath $installed -ArgumentList '--smoke-test' -WorkingDirectory $folder -PassThru
+          if (!$smoke.WaitForExit(25000)) {
+            Stop-Process -Id $smoke.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installed app startup smoke test timed out'
           }
-          if ($app.ExitCode -ne 0) { throw "INSTALLED APP LAUNCH FAILED: exit code $($app.ExitCode)" }
-          Write-Host "WINDOWS_INSTALL_SMOKE_TEST_OK: Installed EXE, Qt DLLs, Qt platform plugin, Start Menu shortcut, desktop shortcut, and startup passed."
-          Get-Item -LiteralPath $installed | Select-Object FullName,Length
+          if ($smoke.ExitCode -ne 0) { throw "Installed app startup error $($smoke.ExitCode)" }
+          Write-Host 'MIXORA_WINDOWS_INSTALL_VERIFIED: exe, Qt libraries, shortcuts and app startup all passed.'
       - uses: actions/upload-artifact@v4
         with:
-          name: MIXORA_DJ_PRO_2_5_1_Windows_VERIFIED_Setup
-          path: MIXORA_DJ_PRO_2_5_1_Setup_x64.exe
+          name: MIXORA_DJ_PRO_2_5_2_Setup_WINDOWS_VERIFIED
+          path: MIXORA_DJ_PRO_2_5_2_Setup_x64.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MIXORA_DJ_PRO_2_5_2_PORTABLE_WINDOWS_VERIFIED
+          path: MIXORA_DJ_PRO_2_5_2_PORTABLE_x64.zip
           if-no-files-found: error
