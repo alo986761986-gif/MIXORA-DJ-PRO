@@ -18,7 +18,7 @@ WavFile decodeQtFile(const QString& filename){
  QEventLoop loop;QTimer timeout;timeout.setSingleShot(true);
  bool failed=false;QString error;
  QObject::connect(&timeout,&QTimer::timeout,&loop,[&]{failed=true;error="Tempo massimo di decodifica superato (120 secondi)";loop.quit();});
- QObject::connect(&decoder,&QAudioDecoder::errorOccurred,&loop,[&](QAudioDecoder::Error){failed=true;error=decoder.errorString();loop.quit();});
+ QObject::connect(&decoder,&QOverload<QAudioDecoder::Error>::of(&QAudioDecoder::error),&loop,[&](QAudioDecoder::Error){failed=true;error=decoder.errorString();loop.quit();});
  QObject::connect(&decoder,&QAudioDecoder::finished,&loop,&QEventLoop::quit);
  QObject::connect(&decoder,&QAudioDecoder::bufferReady,&loop,[&]{
   while(decoder.bufferAvailable()){
