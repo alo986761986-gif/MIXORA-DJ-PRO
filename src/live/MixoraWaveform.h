@@ -85,7 +85,7 @@ protected:
    }
   }
   for(int x=0;x<w;++x){
-   const int b=(std::min)(peaks_.size()-1,int(double(x)*peaks_.size()/w));
+   const int b=(std::min)(int(peaks_.size()-1),int(double(x)*peaks_.size()/w));
    const float peak=peaks_[b];
    const int reach=(std::max)(1,int((h/2-3)*peak));
    const bool played=x<=playX;
