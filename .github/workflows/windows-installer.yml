@@ -13,19 +13,27 @@ permissions:
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      QT_ROOT_DIR: ${{ runner.workspace }}/Qt/6.8.3/msvc2022_64
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: actions/setup-python@v5
+      - name: Restore verified Qt 6.8.3 MSVC2022 cache
+        id: qt-cache
+        uses: actions/cache/restore@v4
         with:
-          python-version: '3.12'
-      - uses: jurplel/install-qt-action@v4.4.1
-        with:
-          version: '6.8.3'
-          arch: win64_msvc2023_04
-          modules: 'qtmultimedia'
-          cache: true
+          path: ${{ runner.workspace }}/Qt
+          key: 'install-qt-action-windows-10.0.20348-desktop-win64_msvc2022_64-6.8.3-D:\a\MIXORA-DJ-PRO\Qt-==1.1.0-==3.3.*-qtmultimedia'
+          fail-on-cache-miss: true
+      - name: Verify cached Qt toolchain
+        shell: pwsh
+        run: |
+          $qtRoot = Join-Path $env:RUNNER_WORKSPACE 'Qt\6.8.3\msvc2022_64'
+          foreach ($file in @('bin\windeployqt.exe','lib\cmake\Qt6\Qt6Config.cmake','bin\Qt6Core.dll','bin\Qt6Multimedia.dll')) {
+            if (!(Test-Path (Join-Path $qtRoot $file))) { throw "Cached Qt missing: $file" }
+          }
+          Write-Host "Qt toolchain restored: $qtRoot"
       - name: Configure CMake
         shell: pwsh
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DBUILD_TESTING=ON
