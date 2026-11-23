@@ -435,4 +435,11 @@ private:
  std::unique_ptr<PCMDevice> device_;
  std::unique_ptr<QAudioSink> sink_;
 };
-int main(int argc,char** argv){QApplication app(argc,argv);LiveWindow w;w.show();return app.exec();}
+int main(int argc,char** argv){
+ QApplication app(argc,argv);
+ LiveWindow w;
+ // Automated Windows installer smoke test (constructs the real Qt window).
+ if(app.arguments().contains("--smoke-test"))return 0;
+ w.show();
+ return app.exec();
+}
