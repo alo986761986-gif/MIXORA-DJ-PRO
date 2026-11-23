@@ -145,7 +145,7 @@ QHeaderView::section{background:#293a49;border:0;border-right:1px solid #405366;
    connect(refresh,&QPushButton::clicked,this,[this]{refreshDevices();});refreshDevices();
    auto* deckRow=new QHBoxLayout;deckRow->setSpacing(8);
 for(int d=0;d<2;++d){
-   auto* group=new QGroupBox(d==0?"DECK A":"DECK B");auto* v=new QVBoxLayout(group);
+   auto* group=new QGroupBox(d==0?"DECK A / PLAYER 1":"DECK B / PLAYER 2");auto* v=new QVBoxLayout(group);v->setSpacing(8);
    auto* tools=new QHBoxLayout;auto* load=new QPushButton("CARICA BRANO");tools->addWidget(load);
    names_[d]=new QLabel("Nessun file");tools->addWidget(names_[d],1);
    play_[d]=new QPushButton("PLAY");play_[d]->setEnabled(false);tools->addWidget(play_[d]);
@@ -156,6 +156,12 @@ for(int d=0;d<2;++d){
     if(engine_)engine_->setCue(d,on);
    });
    v->addLayout(tools);
+   waveform_[d]=new MixoraWaveform(d,false,group);
+   waveform_[d]->setSeekHandler([this,d](double p){if(engine_&&engine_->length(d)){engine_->seek(d,size_t(p*engine_->length(d)));updateProgress();}});
+   v->addWidget(waveform_[d],1);
+   overview_[d]=new MixoraWaveform(d,true,group);overview_[d]->setMaximumHeight(32);
+   overview_[d]->setSeekHandler([this,d](double p){if(engine_&&engine_->length(d)){engine_->seek(d,size_t(p*engine_->length(d)));updateProgress();}});
+   v->addWidget(overview_[d]);
    auto* knobs=new QHBoxLayout;
    const char* captions[]={"GAIN","LOW","MID","HIGH"};
    for(int k=0;k<4;++k){
@@ -204,14 +210,15 @@ for(int d=0;d<2;++d){
     engine_->setLoop(d,start,end);loopButtons_[d]->setText("LOOP ON");
    });
    v->addLayout(transport);
-   root->addWidget(group);
+   deckRow->addWidget(group,1);
    connect(load,&QPushButton::clicked,this,[this,d]{loadDeck(d);});
    connect(play_[d],&QPushButton::clicked,this,[this,d]{if(!engine_)return;
     if(engine_->position(d)>=engine_->length(d))engine_->seek(d,0);
     engine_->setPlaying(d,!engine_->playing(d));updatePlayButtons();
    });
   }
-  auto* masterRow=new QHBoxLayout;masterRow->addWidget(new QLabel("CROSSFADER  A — B"));cross_=new QSlider(Qt::Horizontal);cross_->setRange(0,100);cross_->setValue(50);masterRow->addWidget(cross_,2);
+  root->addLayout(deckRow,5);
+   auto* masterRow=new QHBoxLayout;masterRow->addWidget(new QLabel("CROSSFADER  A — B"));cross_=new QSlider(Qt::Horizontal);cross_->setRange(0,100);cross_->setValue(50);masterRow->addWidget(cross_,2);
   masterRow->addWidget(new QLabel("MASTER"));master_=new QSlider(Qt::Horizontal);master_->setRange(0,100);master_->setValue(75);masterRow->addWidget(master_,1);root->addLayout(masterRow);
   connect(cross_,&QSlider::valueChanged,this,[this](int x){if(engine_)engine_->setCrossfader(x/100.);});
   connect(master_,&QSlider::valueChanged,this,[this](int x){if(engine_)engine_->setMaster(x/100.);});
@@ -226,14 +233,14 @@ for(int d=0;d<2;++d){
   auto* learn=new QPushButton("IMPARA CONTROLLO");learn->setCheckable(true);midiLearnButton_=learn;
   midiRow->addWidget(learn);
   auto* midiRefresh=new QPushButton("RICOLLEGA MIDI");midiRow->addWidget(midiRefresh);
-  root->addLayout(midiRow);
+  advancedLayout->addLayout(midiRow);
   connect(learn,&QPushButton::toggled,this,[this,learn](bool checked){learning_=checked;learn->setText(checked?"MUOVI UN CONTROLLO...":"IMPARA CONTROLLO");});
   connect(midiRefresh,&QPushButton::clicked,this,[this]{clearSyncLeds();midiOutput_.close();ledEnabled_->setChecked(false);midiInput_.openAll();refreshMidiInputPorts();refreshMidiOutputPorts();midiStatus_->setText(QString("Ingressi MIDI aperti: %1. Uscita LED disattivata.").arg(midiInput_.portsOpen()));});
   midiStatus_=new QLabel; midiStatus_->setWordWrap(true);
   // No presumed factory mapping: X1 and Z1 must be learned on their own ports.
   restoreBindings();midiInput_.openAll();refreshMidiInputPorts();
   midiStatus_->setText(QString("Porte MIDI aperte: %1. Z1 e X1 richiedono test fisico/mapping.").arg(midiInput_.portsOpen()));
-  root->addWidget(midiStatus_);
+  advancedLayout->addWidget(midiStatus_);
   auto* midiInfo=new QLabel; midiInfo->setWordWrap(true);
 #ifdef Q_OS_WIN
   QStringList midiNames;
@@ -242,12 +249,12 @@ for(int d=0;d<2;++d){
 #else
   midiInfo->setText("Diagnostica porte MIDI disponibile nelle build Windows.");
 #endif
-  root->addWidget(midiInfo);
+  advancedLayout->addWidget(midiInfo);
   auto* ledRow=new QHBoxLayout;
   ledRow->addWidget(new QLabel("MIDI OUT (LED sperimentali)"));
   midiOutputPorts_=new QComboBox;ledRow->addWidget(midiOutputPorts_,1);
   ledEnabled_=new QCheckBox("ABILITA LED CC42/43 (solo se verificati)");ledRow->addWidget(ledEnabled_);
-  root->addLayout(ledRow);
+  advancedLayout->addLayout(ledRow);
   refreshMidiOutputPorts();
   connect(ledEnabled_,&QCheckBox::toggled,this,[this](bool checked){
    if(!checked){clearSyncLeds();midiOutput_.close();return;}
@@ -420,7 +427,9 @@ private:
    if(sink_)sink_->suspend();
    // Analyze before moving file into playback engine. Long files are analyzed only for 2 minutes.
    const auto analysis=mixora::analyzeBeats(wav);
-   engine_->load(d,std::move(wav));engine_->setBeatAnalysis(d,analysis);
+   waveform_[d]->setTrack(wav,analysis.bpm);overview_[d]->setTrack(wav,analysis.bpm);
+    engine_->load(d,std::move(wav));engine_->setBeatAnalysis(d,analysis);
+    addLibraryTrack(file);
    if(syncButtons_[d]->isChecked())syncButtons_[d]->setChecked(false);
    bpmLabels_[d]->setText(analysis.bpm>0?QString("BPM: %1 (stima %2%)").arg(analysis.bpm,0,'f',1).arg(int(analysis.confidence*100)):"BPM: non rilevato");
    syncButtons_[d]->setEnabled(analysis.bpm>0);
@@ -452,12 +461,16 @@ private:
   engine_->setEQ(d,controls_[d][1]->value(),controls_[d][2]->value(),controls_[d][3]->value());
  }
  void updatePlayButtons(){if(!engine_)return;for(int d=0;d<2;++d)play_[d]->setText(engine_->playing(d)?"PAUSA":"PLAY");}
- void updateProgress(){if(!engine_)return;auto time=[this](size_t frames){size_t sec=frames/engine_->sampleRate();return QString("%1:%2").arg(sec/60,2,10,QChar('0')).arg(sec%60,2,10,QChar('0'));};
+ void updateProgress(){if(!engine_)return;
+   for(int d=0;d<2;++d){if(waveform_[d])waveform_[d]->setPosition(engine_->position(d));if(overview_[d])overview_[d]->setPosition(engine_->position(d));}
+   auto time=[this](size_t frames){size_t sec=frames/engine_->sampleRate();return QString("%1:%2").arg(sec/60,2,10,QChar('0')).arg(sec%60,2,10,QChar('0'));};
   progress_->setText(QString("A %1 / %2     |     B %3 / %4").arg(time(engine_->position(0)),time(engine_->length(0)),time(engine_->position(1)),time(engine_->length(1))));
   if(sink_&&sink_->error()!=QAudio::NoError)status_->setText("Errore audio Qt: verifica dispositivo di uscita e riavvia il player.");
  }
  mixora::WinMidiInput midiInput_; mixora::WinMidiOutput midiOutput_; QComboBox* midiOutputPorts_=nullptr; QCheckBox* ledEnabled_=nullptr; mixora::MidiMapping mapping_; QComboBox* midiTarget_=nullptr; QComboBox* midiLearnPort_=nullptr; QLabel* midiStatus_=nullptr; QPushButton* midiLearnButton_=nullptr;bool learning_=false;
  QComboBox* outputs_=nullptr;
+  MixoraWaveform* waveform_[2]{};MixoraWaveform* overview_[2]{};
+  QTreeWidget* library_=nullptr;QLineEdit* librarySearch_=nullptr;QStringList libraryPaths_;
  QLabel* bpmLabels_[2]{};QPushButton* syncButtons_[2]{};
  QLabel* names_[2]{};QPushButton* play_[2]{};QPushButton* cueButtons_[2]{};QPushButton* cuePointButtons_[2]{};QPushButton* loopButtons_[2]{};QPushButton* hotButtons_[2][4]{};QSlider* controls_[2][4]{};
  QComboBox* routing_=nullptr;QSlider* cueVolume_=nullptr;
