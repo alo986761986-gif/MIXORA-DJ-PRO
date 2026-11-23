@@ -1,4 +1,4 @@
-name: MIXORA DJ PRO Windows installer and portable
+name: MIXORA DJ PRO 3.0 Four Deck Windows installer
 on:
   workflow_dispatch:
   push:
@@ -20,7 +20,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          arch: win64_msvc2022_64
+          arch: win64_msvc2023_04
           modules: 'qtmultimedia'
           cache: true
       - name: Configure CMake
@@ -49,8 +49,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Compress-Archive -Path 'stage\*' -DestinationPath 'MIXORA_DJ_PRO_2_6_PORTABLE_x64.zip' -CompressionLevel Optimal
-          if (!(Test-Path 'MIXORA_DJ_PRO_2_6_PORTABLE_x64.zip')) { throw 'Portable package missing' }
+          Compress-Archive -Path 'stage\*' -DestinationPath 'MIXORA_DJ_PRO_3_0_PORTABLE_x64.zip' -CompressionLevel Optimal
+          if (!(Test-Path 'MIXORA_DJ_PRO_3_0_PORTABLE_x64.zip')) { throw 'Portable package missing' }
       - name: Build installer using Inno Setup instead of NSIS
         shell: pwsh
         run: |
@@ -63,13 +63,13 @@ jobs:
           $outDir = (Get-Location).Path
           & $iscc "/DStageDir=$stageDir" "/O$outDir" 'installer/MIXORA.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Inno installer packaging failed' }
-          if (!(Test-Path 'MIXORA_DJ_PRO_2_6_Setup_x64.exe')) { throw 'Installer EXE not generated' }
-          Get-Item 'MIXORA_DJ_PRO_2_6_Setup_x64.exe' | Select-Object FullName,Length
+          if (!(Test-Path 'MIXORA_DJ_PRO_3_0_Setup_x64.exe')) { throw 'Installer EXE not generated' }
+          Get-Item 'MIXORA_DJ_PRO_3_0_Setup_x64.exe' | Select-Object FullName,Length
       - name: Verify real installation and EXE launch on Windows
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exeSetup = (Resolve-Path 'MIXORA_DJ_PRO_2_6_Setup_x64.exe').Path
+          $exeSetup = (Resolve-Path 'MIXORA_DJ_PRO_3_0_Setup_x64.exe').Path
           $installerLog = Join-Path $env:TEMP 'mixora-install.log'
           $p = Start-Process -FilePath $exeSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$installerLog") -PassThru
           if (!$p.WaitForExit(60000)) {
@@ -108,11 +108,11 @@ jobs:
           Write-Host 'MIXORA_WINDOWS_INSTALL_VERIFIED: exe, Qt libraries, shortcuts and app startup all passed.'
       - uses: actions/upload-artifact@v4
         with:
-          name: MIXORA_DJ_PRO_2_6_Setup_WINDOWS_VERIFIED
-          path: MIXORA_DJ_PRO_2_6_Setup_x64.exe
+          name: MIXORA_DJ_PRO_3_0_Setup_WINDOWS_VERIFIED
+          path: MIXORA_DJ_PRO_3_0_Setup_x64.exe
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: MIXORA_DJ_PRO_2_6_PORTABLE_WINDOWS_VERIFIED
-          path: MIXORA_DJ_PRO_2_6_PORTABLE_x64.zip
+          name: MIXORA_DJ_PRO_3_0_PORTABLE_WINDOWS_VERIFIED
+          path: MIXORA_DJ_PRO_3_0_PORTABLE_x64.zip
           if-no-files-found: error

@@ -24,7 +24,7 @@ int main(){
  assert(!e.playing(0) && !e.playing(1));
  e.processBuses(m,c,2);
  assert(std::abs(c[0].left)<1e-5f);
- bool threw=false;try{e.setCue(2,true);}catch(const std::invalid_argument&){threw=true;}
+ bool threw=false;try{e.setCue(4,true);}catch(const std::invalid_argument&){threw=true;}
  assert(threw);
  std::cout<<"FOUR_CHANNEL_CUE_TESTS_OK\n";
 }

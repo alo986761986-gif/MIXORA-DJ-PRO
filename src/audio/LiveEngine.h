@@ -20,6 +20,8 @@ public:
  void setCrossfader(double value);
  void setMaster(double value);
  void setGain(int deck, double gain);
+ void setChannelFader(int deck, double level);
+ void setFilter(int deck, double position);
  void setEQ(int deck, double low, double mid, double high);
  void process(StereoFrame* output, size_t count);
  // Four-channel routing: channel 1/2 Master, channel 3/4 Cue.
@@ -47,18 +49,18 @@ public:
 private:
  uint32_t sampleRate_;
  Mixer mixer_;
- std::array<WavFile,2> tracks_;
- std::array<size_t,2> positions_{};
- std::array<double,2> fractionalPositions_{};
- std::array<double,2> rates_{{1.,1.}};
- std::array<BeatAnalysis,2> beat_{};
- std::array<bool,2> sync_{};
- std::array<bool,2> playing_{};
- std::array<bool,2> cueEnabled_{};
- std::array<bool,2> loopEnabled_{};
- std::array<size_t,2> loopStart_{},loopEnd_{};
- std::array<std::array<size_t,4>,2> hotCues_{};
- std::array<std::array<bool,4>,2> hotCueSet_{};
+ std::array<WavFile,4> tracks_;
+ std::array<size_t,4> positions_{};
+ std::array<double,4> fractionalPositions_{};
+ std::array<double,4> rates_{{1.,1.,1.,1.}};
+ std::array<BeatAnalysis,4> beat_{};
+ std::array<bool,4> sync_{};
+ std::array<bool,4> playing_{};
+ std::array<bool,4> cueEnabled_{};
+ std::array<bool,4> loopEnabled_{};
+ std::array<size_t,4> loopStart_{},loopEnd_{};
+ std::array<std::array<size_t,4>,4> hotCues_{};
+ std::array<std::array<bool,4>,4> hotCueSet_{};
  double cueGain_=0.7;
 };
 }

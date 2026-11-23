@@ -29,6 +29,8 @@
 #include <QMessageBox>
 #include <QComboBox>
 #include <QTreeWidget>
+#include <QGridLayout>
+#include <QTime>
 #include <QTreeWidgetItem>
 #include <QHeaderView>
 #include <QLineEdit>
@@ -100,8 +102,8 @@ public:
  }
  LiveWindow(){
   setAcceptDrops(true);
-  setWindowTitle("MIXORA DJ PRO 2.6 | PERFORMANCE EDITION");
-  setMinimumSize(990,650);resize(1460,880);
+  setWindowTitle("MIXORA DJ PRO 3.0 | QUATTRO DECK");
+  setMinimumSize(1120,720);resize(1600,960);
   setStyleSheet(R"CSS(
 QWidget{background:#10141b;color:#dce5ee;font:12px 'Segoe UI';}
 QLabel{background:transparent;}
@@ -122,7 +124,7 @@ QHeaderView::section{background:#293a49;border:0;border-right:1px solid #405366;
    auto* topbar=new QHBoxLayout;
    auto* title=new QLabel("MIXORA  DJ PRO");title->setStyleSheet("font-size:25px;font-weight:800;color:#55c9fb;");
    topbar->addWidget(title);
-   auto* subtitle=new QLabel("  PERFORMANCE EDITION / DECKS A + B");
+   auto* subtitle=new QLabel("  4 DECKS A / B / C / D  •  PERFORMANCE STUDIO");
    subtitle->setStyleSheet("font-size:10px;color:#859aad;font-weight:700;");
    topbar->addWidget(subtitle);topbar->addStretch();
    auto* advancedToggle=new QPushButton("AUDIO / MIDI SETTINGS");advancedToggle->setCheckable(true);topbar->addWidget(advancedToggle);
@@ -143,9 +145,9 @@ QHeaderView::section{background:#293a49;border:0;border-right:1px solid #405366;
    routingRow->addWidget(cueVolume_);advancedLayout->addLayout(routingRow);
    connect(cueVolume_,&QSlider::valueChanged,this,[this](int v){if(engine_)engine_->setCueGain(v/100.);});
    connect(refresh,&QPushButton::clicked,this,[this]{refreshDevices();});refreshDevices();
-   auto* deckRow=new QHBoxLayout;deckRow->setSpacing(8);
-for(int d=0;d<2;++d){
-   auto* group=new QGroupBox(d==0?"DECK A / PLAYER 1":"DECK B / PLAYER 2");auto* v=new QVBoxLayout(group);v->setSpacing(8);
+   auto* deckGrid=new QGridLayout;deckGrid->setSpacing(5);
+for(int d=0;d<4;++d){
+   auto* group=new QGroupBox(QString("DECK %1 / PLAYER %2").arg(QChar('A'+d)).arg(d+1));auto* v=new QVBoxLayout(group);v->setSpacing(8);
    auto* tools=new QHBoxLayout;auto* load=new QPushButton("CARICA BRANO");tools->addWidget(load);
    names_[d]=new QLabel("Nessun file");tools->addWidget(names_[d],1);
    play_[d]=new QPushButton("PLAY");play_[d]->setEnabled(false);tools->addWidget(play_[d]);
@@ -178,7 +180,7 @@ for(int d=0;d<2;++d){
    connect(syncButtons_[d],&QPushButton::toggled,this,[this,d](bool enabled){
     if(!engine_)return;
     if(enabled){
-     try{engine_->synchronize(d,1-d);syncButtons_[d]->setText("SYNC ON (pitch varia)");}
+     try{engine_->synchronize(d,d%2?d-1:d+1);syncButtons_[d]->setText("SYNC ON (pitch varia)");}
      catch(const std::exception& ex){syncButtons_[d]->setChecked(false);status_->setText(QString::fromUtf8(ex.what()));}
     }else{engine_->setSync(d,false);syncButtons_[d]->setText("SYNC OFF");}
    });
@@ -210,7 +212,7 @@ for(int d=0;d<2;++d){
     engine_->setLoop(d,start,end);loopButtons_[d]->setText("LOOP ON");
    });
    v->addLayout(transport);
-   deckRow->addWidget(group,1);
+   deckGrid->addWidget(group,d/2,d%2?2:0);
    connect(load,&QPushButton::clicked,this,[this,d]{loadDeck(d);});
    connect(play_[d],&QPushButton::clicked,this,[this,d]{if(!engine_)return;
     if(engine_->position(d)>=engine_->length(d))engine_->seek(d,0);
@@ -218,7 +220,7 @@ for(int d=0;d<2;++d){
    });
   }
   auto* mixerPanel=new QGroupBox("MIXER / 2 CHANNELS");
-   mixerPanel->setMinimumWidth(195);mixerPanel->setMaximumWidth(260);
+   mixerPanel->setMinimumWidth(240);mixerPanel->setMaximumWidth(315);
    auto* mixerLayout=new QVBoxLayout(mixerPanel);mixerLayout->setSpacing(12);
    auto* mixerTitle=new QLabel("MIXORA MIXER");
    mixerTitle->setAlignment(Qt::AlignCenter);mixerTitle->setStyleSheet("color:#78cbec;font-size:14px;font-weight:700;");
@@ -226,12 +228,32 @@ for(int d=0;d<2;++d){
    auto* channels=new QLabel("CHANNEL A                CHANNEL B");
    channels->setAlignment(Qt::AlignCenter);channels->setStyleSheet("color:#a4c3d5;font-size:10px;");
    mixerLayout->addWidget(channels);
-   auto* mixInfo=new QLabel("EQ A/B  ·  LOW / MID / HIGH\nGAIN indipendente");
+   auto* mixInfo=new QLabel("4 CH  •  GAIN / HI / MID / LO");
    mixInfo->setAlignment(Qt::AlignCenter);mixInfo->setStyleSheet("color:#839eaf;font-size:11px;");
    mixerLayout->addWidget(mixInfo);
+   auto* channelGrid=new QGridLayout;channelGrid->setSpacing(4);
+   for(int d=0;d<4;++d){
+    auto* strip=new QWidget;
+    auto* stripLayout=new QVBoxLayout(strip);stripLayout->setContentsMargins(0,0,0,0);stripLayout->setSpacing(4);
+    auto* lbl=new QLabel(QString("CH %1").arg(QChar('A'+d)));
+    lbl->setAlignment(Qt::AlignCenter);lbl->setStyleSheet(d%2?"font-weight:700;color:#ed9d6e;":"font-weight:700;color:#64c6fa;");
+    stripLayout->addWidget(lbl);
+    channelFaders_[d]=new QSlider(Qt::Vertical);channelFaders_[d]->setRange(0,100);channelFaders_[d]->setValue(100);
+    channelFaders_[d]->setMinimumHeight(52);stripLayout->addWidget(channelFaders_[d],1,Qt::AlignHCenter);
+    connect(channelFaders_[d],&QSlider::valueChanged,this,[this,d](int val){if(engine_)engine_->setChannelFader(d,val/100.);});
+    auto* cue=new QLabel("FADER");cue->setAlignment(Qt::AlignCenter);cue->setStyleSheet("font-size:9px;color:#8999ac");stripLayout->addWidget(cue);
+    filterKnobs_[d]=new QSlider(Qt::Horizontal);filterKnobs_[d]->setRange(0,100);filterKnobs_[d]->setValue(50);
+    stripLayout->addWidget(filterKnobs_[d]);
+    connect(filterKnobs_[d],&QSlider::valueChanged,this,[this,d](int val){if(engine_)engine_->setFilter(d,val/100.);});
+    auto* filterLabel=new QLabel("FILTER");filterLabel->setAlignment(Qt::AlignCenter);filterLabel->setStyleSheet("font-size:9px;color:#8999ac;");stripLayout->addWidget(filterLabel);
+    channelGrid->addWidget(strip,d/2,d%2);
+   }
+   mixerLayout->addLayout(channelGrid,1);
    mixerLayout->addStretch();
-   deckRow->insertWidget(1,mixerPanel,1);
-   root->addLayout(deckRow,5);
+   deckGrid->addWidget(mixerPanel,0,1,2,1);
+   deckGrid->setColumnStretch(0,5);deckGrid->setColumnStretch(1,2);deckGrid->setColumnStretch(2,5);
+   deckGrid->setRowStretch(0,1);deckGrid->setRowStretch(1,1);
+   root->addLayout(deckGrid,7);
    auto* masterRow=new QHBoxLayout;masterRow->addWidget(new QLabel("CROSSFADER  A — B"));cross_=new QSlider(Qt::Horizontal);cross_->setRange(0,100);cross_->setValue(50);masterRow->addWidget(cross_,2);
   masterRow->addWidget(new QLabel("MASTER"));master_=new QSlider(Qt::Horizontal);master_->setRange(0,100);master_->setValue(75);masterRow->addWidget(master_,1);mixerLayout->addLayout(masterRow);
   connect(cross_,&QSlider::valueChanged,this,[this](int x){if(engine_)engine_->setCrossfader(x/100.);});
@@ -239,7 +261,7 @@ for(int d=0;d<2;++d){
   auto* midiRow=new QHBoxLayout;
   midiRow->addWidget(new QLabel("MIDI LEARN (porta dedicata)"));
   midiTarget_=new QComboBox;
-  const QStringList targets={"play_a","play_b","sync_a","sync_b","cue_a","cue_b","cross","master","gain_a","gain_b","low_a","mid_a","high_a","low_b","mid_b","high_b","cue_vol","cuepoint_a","cuepoint_b","loop_a","loop_b","hot1_a","hot2_a","hot3_a","hot4_a","hot1_b","hot2_b","hot3_b","hot4_b"};
+  const QStringList targets={"play_a","play_b","play_c","play_d","sync_a","sync_b","sync_c","sync_d","cue_a","cue_b","cue_c","cue_d","cross","master","gain_a","gain_b","low_a","mid_a","high_a","low_b","mid_b","high_b","cue_vol","cuepoint_a","cuepoint_b","loop_a","loop_b","hot1_a","hot2_a","hot3_a","hot4_a","hot1_b","hot2_b","hot3_b","hot4_b"};
   for(const auto& key:targets)midiTarget_->addItem(key,key);
   midiRow->addWidget(midiTarget_,1);
   midiRow->addWidget(new QLabel("PORTA PER LEARN"));
@@ -324,7 +346,7 @@ for(int d=0;d<2;++d){
    restoreLibrary();
    root->addWidget(advancedPanel);
    auto* stop=new QPushButton("STOP A + B");root->addWidget(stop);
-  connect(stop,&QPushButton::clicked,this,[this]{if(!engine_)return;for(int d=0;d<2;++d){engine_->setPlaying(d,false);engine_->seek(d,0);}updatePlayButtons();});
+  connect(stop,&QPushButton::clicked,this,[this]{if(!engine_)return;for(int d=0;d<4;++d){engine_->setPlaying(d,false);engine_->seek(d,0);}updatePlayButtons();});
   status_=new QLabel("Carica il primo brano per inizializzare l'audio.");status_->setWordWrap(true);root->addWidget(status_);
   auto* warning=new QLabel("ATTENZIONE: prototipo realtime: MP3/FLAC dipendono dai codec Qt. Per il Cue reale seleziona 4 canali e una scheda con uscite 1/2 e 3/4 indipendenti. Non provato con Z1. EQ non anti-click, nessun limiter true-peak: non usare durante esibizioni.");warning->setWordWrap(true);warning->setStyleSheet("color:#e3b77b");root->addWidget(warning);
   progress_=new QLabel("A 00:00 / 00:00     |     B 00:00 / 00:00");root->addWidget(progress_);
@@ -433,18 +455,18 @@ private:
    const auto* binding=mapping_.lookup(deviceKeyForPort(event.device),msg);if(!binding)continue;
    const QString target=QString::fromStdString(binding->control);
    if(binding->button&&!mixora::midiOn(msg))continue;
-   if(target=="play_a"||target=="play_b"){
-    const int d=target.endsWith('a')?0:1;if(play_[d]->isEnabled())play_[d]->click();
-   }else if(target=="sync_a"||target=="sync_b"){
-    const int d=target.endsWith('a')?0:1;if(syncButtons_[d]->isEnabled())syncButtons_[d]->click();
-   }else if(target=="cue_a"||target=="cue_b"){
-    const int d=target.endsWith('a')?0:1;if(cueButtons_[d]->isEnabled())cueButtons_[d]->click();
-   }else if(target=="loop_a"||target=="loop_b"){
-    const int d=target.endsWith('a')?0:1;if(loopButtons_[d]->isEnabled())loopButtons_[d]->click();
-   }else if(target=="cuepoint_a"||target=="cuepoint_b"){
-    const int d=target.endsWith('a')?0:1;if(cuePointButtons_[d]->isEnabled())cuePointButtons_[d]->click();
-   }else if(target.startsWith("hot") && (target.endsWith("_a")||target.endsWith("_b"))){
-    const int d=target.endsWith('a')?0:1;const int slot=target.mid(3,1).toInt()-1;
+   if(target=="play_a"||target=="play_b"||target=="play_c"||target=="play_d"){
+    const int d=int(target.back().unicode())-int('a');if(play_[d]->isEnabled())play_[d]->click();
+   }else if(target=="sync_a"||target=="sync_b"||target=="sync_c"||target=="sync_d"){
+    const int d=int(target.back().unicode())-int('a');if(syncButtons_[d]->isEnabled())syncButtons_[d]->click();
+   }else if(target=="cue_a"||target=="cue_b"||target=="cue_c"||target=="cue_d"){
+    const int d=int(target.back().unicode())-int('a');if(cueButtons_[d]->isEnabled())cueButtons_[d]->click();
+   }else if(target=="loop_a"||target=="loop_b"||target=="loop_c"||target=="loop_d"){
+    const int d=int(target.back().unicode())-int('a');if(loopButtons_[d]->isEnabled())loopButtons_[d]->click();
+   }else if(target=="cuepoint_a"||target=="cuepoint_b"||target=="cuepoint_c"||target=="cuepoint_d"){
+    const int d=int(target.back().unicode())-int('a');if(cuePointButtons_[d]->isEnabled())cuePointButtons_[d]->click();
+   }else if(target.startsWith("hot") && (target.endsWith("_a")||target.endsWith("_b")||target.endsWith("_c")||target.endsWith("_d"))){
+    const int d=int(target.back().unicode())-int('a');const int slot=target.mid(3,1).toInt()-1;
     if(slot>=0&&slot<4&&engine_){
      // MIDI hardware: first press stores a cue, later presses jump to it.
      if(!engine_->hasHotCue(d,slot)){engine_->setHotCue(d,slot);hotButtons_[d][slot]->setText(QString("HOT %1 *").arg(slot+1));}
@@ -456,7 +478,7 @@ private:
     else if(target=="master")master_->setValue((value*100+63)/127);
     else if(target=="cue_vol")cueVolume_->setValue((value*100+63)/127);
     else {
-     for(int d=0;d<2;++d){const QString suffix=d==0?"_a":"_b";
+     for(int d=0;d<4;++d){const QString suffix=QString("_%1").arg(QChar('a'+d));
       if(!target.endsWith(suffix))continue;
       const QString type=target.left(target.size()-2);
       int k=-1;if(type=="gain")k=0;else if(type=="low")k=1;else if(type=="mid")k=2;else if(type=="high")k=3;
@@ -476,7 +498,7 @@ private:
  }
  void dropEvent(QDropEvent* e)override{
   for(const auto& url:e->mimeData()->urls())if(url.isLocalFile()){
-   const int deck=engine_&&engine_->length(0)>0?1:0;
+   const int deck=(e->position().x()<width()/2)?(e->position().y()<height()/2?0:2):(e->position().y()<height()/2?1:3);
    loadDeckFile(deck,url.toLocalFile());e->acceptProposedAction();break;
   }
  }
@@ -509,7 +531,7 @@ private:
    cuePointButtons_[d]->setEnabled(true);loopButtons_[d]->setChecked(false);loopButtons_[d]->setEnabled(analysis.bpm>0);
    for(int slot=0;slot<4;++slot){hotButtons_[d][slot]->setEnabled(true);hotButtons_[d][slot]->setText(QString("HOT %1").arg(slot+1));}
    if(!sink_)startAudio();else sink_->resume();
-   status_->setText(QString("Caricato Deck %1. Premi PLAY per riprodurre.").arg(d?'B':'A'));
+   status_->setText(QString("Caricato Deck %1. Premi PLAY per riprodurre.").arg(QChar('A'+d)));
   }catch(const std::exception& ex){if(sink_&&sink_->state()==QAudio::SuspendedState)sink_->resume();QMessageBox::warning(this,"Impossibile caricare audio",QString::fromUtf8(ex.what()));}
  }
  void startAudio(){
@@ -531,19 +553,21 @@ private:
   engine_->setGain(d,controls_[d][0]->value()/100.);
   engine_->setEQ(d,controls_[d][1]->value(),controls_[d][2]->value(),controls_[d][3]->value());
  }
- void updatePlayButtons(){if(!engine_)return;for(int d=0;d<2;++d)play_[d]->setText(engine_->playing(d)?"PAUSA":"PLAY");}
+ void updatePlayButtons(){if(!engine_)return;for(int d=0;d<4;++d)play_[d]->setText(engine_->playing(d)?"PAUSA":"PLAY");}
  void updateProgress(){if(!engine_)return;
-   for(int d=0;d<2;++d){if(waveform_[d])waveform_[d]->setPosition(engine_->position(d));if(overview_[d])overview_[d]->setPosition(engine_->position(d));}
+   for(int d=0;d<4;++d){if(waveform_[d])waveform_[d]->setPosition(engine_->position(d));if(overview_[d])overview_[d]->setPosition(engine_->position(d));}
    auto time=[this](size_t frames){size_t sec=frames/engine_->sampleRate();return QString("%1:%2").arg(sec/60,2,10,QChar('0')).arg(sec%60,2,10,QChar('0'));};
-  progress_->setText(QString("A %1 / %2     |     B %3 / %4").arg(time(engine_->position(0)),time(engine_->length(0)),time(engine_->position(1)),time(engine_->length(1))));
+  progress_->setText(QString("A %1  / B %2  / C %3  / D %4")
+      .arg(time(engine_->position(0)),time(engine_->position(1)),time(engine_->position(2)),time(engine_->position(3))));
   if(sink_&&sink_->error()!=QAudio::NoError)status_->setText("Errore audio Qt: verifica dispositivo di uscita e riavvia il player.");
  }
  mixora::WinMidiInput midiInput_; mixora::WinMidiOutput midiOutput_; QComboBox* midiOutputPorts_=nullptr; QCheckBox* ledEnabled_=nullptr; mixora::MidiMapping mapping_; QComboBox* midiTarget_=nullptr; QComboBox* midiLearnPort_=nullptr; QLabel* midiStatus_=nullptr; QPushButton* midiLearnButton_=nullptr;bool learning_=false;
  QComboBox* outputs_=nullptr;
-  MixoraWaveform* waveform_[2]{};MixoraWaveform* overview_[2]{};
+  MixoraWaveform* waveform_[4]{};MixoraWaveform* overview_[4]{};
   QTreeWidget* library_=nullptr;QLineEdit* librarySearch_=nullptr;QStringList libraryPaths_;
- QLabel* bpmLabels_[2]{};QPushButton* syncButtons_[2]{};
- QLabel* names_[2]{};QPushButton* play_[2]{};QPushButton* cueButtons_[2]{};QPushButton* cuePointButtons_[2]{};QPushButton* loopButtons_[2]{};QPushButton* hotButtons_[2][4]{};QSlider* controls_[2][4]{};
+ QLabel* bpmLabels_[4]{};QPushButton* syncButtons_[4]{};
+ QLabel* names_[4]{};QPushButton* play_[4]{};QPushButton* cueButtons_[4]{};QPushButton* cuePointButtons_[4]{};QPushButton* loopButtons_[4]{};QPushButton* hotButtons_[4][4]{};QSlider* controls_[4][4]{};
+ QSlider* channelFaders_[4]{};QSlider* filterKnobs_[4]{};
  QComboBox* routing_=nullptr;QSlider* cueVolume_=nullptr;
  QSlider* cross_=nullptr;QSlider* master_=nullptr;QLabel* status_=nullptr;QLabel* progress_=nullptr;
  std::unique_ptr<mixora::LiveEngine> engine_;

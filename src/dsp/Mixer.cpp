@@ -44,16 +44,52 @@ void ThreeBandEQ::configure(double sr,double low,double mid,double high){
 }
 StereoFrame ThreeBandEQ::process(StereoFrame x){return high_.process(mid_.process(low_.process(x)));}
 void ThreeBandEQ::reset(){low_.reset();mid_.reset();high_.reset();}
-Mixer::Mixer(double sr):sampleRate_(sr){if(!std::isfinite(sr)||sr<16000||sr>384000)throw std::invalid_argument("Invalid sample rate");setEQ(0,0,0,0);setEQ(1,0,0,0);}
+
+Mixer::Mixer(double sr):sampleRate_(sr){
+ if(!std::isfinite(sr)||sr<16000||sr>384000)throw std::invalid_argument("Invalid sample rate");
+ for(int i=0;i<4;++i)setEQ(i,0,0,0);
+}
 void Mixer::setCrossfader(double x){if(!std::isfinite(x))throw std::invalid_argument("Invalid crossfader");cross_=clamp(x,0,1);}
 void Mixer::setMasterGain(double g){if(!std::isfinite(g))throw std::invalid_argument("Invalid master gain");master_=clamp(g,0,1);}
-void Mixer::setDeckGain(int deck,double g){if(deck<0||deck>1||!std::isfinite(g))throw std::invalid_argument("Invalid deck gain");gains_[deck]=clamp(g,0,2);}
-void Mixer::setEQ(int deck,double lo,double mid,double hi){if(deck<0||deck>1)throw std::invalid_argument("Invalid deck");eq_[deck].configure(sampleRate_,lo,mid,hi);}
-StereoFrame Mixer::process(StereoFrame a,StereoFrame b){
- a=eq_[0].process(a);b=eq_[1].process(b);
- const double ga=std::cos(cross_*pi/2)*gains_[0]*master_,gb=std::sin(cross_*pi/2)*gains_[1]*master_;
- // Hard clipping guard; replace with a true-peak limiter before live use.
- return {static_cast<float>(clamp(a.left*ga+b.left*gb,-1,1)),static_cast<float>(clamp(a.right*ga+b.right*gb,-1,1))};
+void Mixer::setDeckGain(int d,double g){if(d<0||d>=4||!std::isfinite(g))throw std::invalid_argument("Invalid deck gain");gains_[d]=clamp(g,0,2);}
+void Mixer::setChannelFader(int d,double f){if(d<0||d>=4||!std::isfinite(f))throw std::invalid_argument("Invalid fader");faders_[d]=clamp(f,0,1);}
+void Mixer::setFilter(int d,double value){if(d<0||d>=4||!std::isfinite(value))throw std::invalid_argument("Invalid filter");filters_[d]=clamp(value,0,1);}
+void Mixer::setEQ(int d,double lo,double mid,double hi){if(d<0||d>=4)throw std::invalid_argument("Invalid deck");eq_[d].configure(sampleRate_,lo,mid,hi);}
+StereoFrame Mixer::process(StereoFrame a,StereoFrame b){return process(std::array<StereoFrame,4>{{a,b,{},{}}});}
+StereoFrame Mixer::process(const std::array<StereoFrame,4>& input){
+ double left=0,right=0;
+ const double sideA=std::cos(cross_*pi/2),sideB=std::sin(cross_*pi/2);
+ for(int d=0;d<4;++d){
+  StereoFrame x=eq_[d].process(input[d]);
+  // Simple, stateful one-pole resonant-free musical filter, neutral at centre.
+  const double value=filters_[d];
+  if(value<0.495){
+   const double strength=(0.5-value)*2.;
+   const double hz=20000.*std::pow(40./20000.,strength);
+   const double alpha=1.-std::exp(-2.*pi*hz/sampleRate_);
+   double* state=filterLow_[d].data();
+   state[0]+=alpha*(double(x.left)-state[0]);
+   state[1]+=alpha*(double(x.right)-state[1]);
+   x={float(state[0]),float(state[1])};
+  }else if(value>0.505){
+   const double strength=(value-0.5)*2.;
+   const double hz=20.*std::pow(8000./20.,strength);
+   const double alpha=1.-std::exp(-2.*pi*hz/sampleRate_);
+   double* state=filterHigh_[d].data();
+   state[0]+=alpha*(double(x.left)-state[0]);
+   state[1]+=alpha*(double(x.right)-state[1]);
+   x={float(double(x.left)-state[0]),float(double(x.right)-state[1])};
+  }
+  const double level=(d%2==0?sideA:sideB)*gains_[d]*faders_[d];
+  left+=x.left*level;
+  right+=x.right*level;
+ }
+ // Bounded floating point output, not a mastering-grade true peak limiter.
+ return {float(clamp(left*master_,-1.,1.)),float(clamp(right*master_,-1.,1.))};
 }
-void Mixer::reset(){eq_[0].reset();eq_[1].reset();}
+void Mixer::reset(){
+ for(auto& e:eq_)e.reset();
+ for(auto& st:filterLow_)st.fill(0.);
+ for(auto& st:filterHigh_)st.fill(0.);
+}
 }

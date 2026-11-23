@@ -7,56 +7,58 @@
 namespace mixora {
 LiveEngine::LiveEngine(uint32_t rate):sampleRate_(rate),mixer_(rate){}
 void LiveEngine::load(int deck,WavFile file){
- if(deck<0||deck>1)throw std::invalid_argument("Deck must be 0 or 1");
+ if(deck<0||deck>=4)throw std::invalid_argument("Deck must be 0 through 3");
  if(file.sampleRate!=sampleRate_)throw std::invalid_argument("Track sample rate differs from engine");
  tracks_[deck]=std::move(file);positions_[deck]=0;fractionalPositions_[deck]=0;rates_[deck]=1;beat_[deck]={};sync_[deck]=false;playing_[deck]=false;loopEnabled_[deck]=false;loopStart_[deck]=loopEnd_[deck]=0;hotCueSet_[deck].fill(false);
  mixer_.reset();
 }
-void LiveEngine::setPlaying(int d,bool p){if(d<0||d>1)throw std::invalid_argument("Deck");playing_[d]=p && positions_[d]<tracks_[d].frames.size();}
-bool LiveEngine::playing(int d)const{return d>=0&&d<2&&playing_[d];}
-void LiveEngine::seek(int d,size_t pos){if(d<0||d>1)throw std::invalid_argument("Deck");positions_[d]=std::min(pos,tracks_[d].frames.size());fractionalPositions_[d]=double(positions_[d]);mixer_.reset();}
-size_t LiveEngine::position(int d)const{return (d>=0&&d<2)?positions_[d]:0;}
-size_t LiveEngine::length(int d)const{return (d>=0&&d<2)?tracks_[d].frames.size():0;}
+void LiveEngine::setPlaying(int d,bool p){if(d<0||d>=4)throw std::invalid_argument("Deck");playing_[d]=p && positions_[d]<tracks_[d].frames.size();}
+bool LiveEngine::playing(int d)const{return d>=0&&d<4&&playing_[d];}
+void LiveEngine::seek(int d,size_t pos){if(d<0||d>=4)throw std::invalid_argument("Deck");positions_[d]=std::min(pos,tracks_[d].frames.size());fractionalPositions_[d]=double(positions_[d]);mixer_.reset();}
+size_t LiveEngine::position(int d)const{return (d>=0&&d<4)?positions_[d]:0;}
+size_t LiveEngine::length(int d)const{return (d>=0&&d<4)?tracks_[d].frames.size():0;}
 void LiveEngine::setLoop(int d,size_t start,size_t end){
- if(d<0||d>1)throw std::invalid_argument("Deck");
+ if(d<0||d>=4)throw std::invalid_argument("Deck");
  if(start>=end||end>length(d))throw std::invalid_argument("Invalid loop bounds");
  loopStart_[d]=start;loopEnd_[d]=end;loopEnabled_[d]=true;
  if(fractionalPositions_[d]<double(start)||fractionalPositions_[d]>=double(end))seek(d,start);
 }
-void LiveEngine::clearLoop(int d){if(d<0||d>1)throw std::invalid_argument("Deck");loopEnabled_[d]=false;}
-bool LiveEngine::loopEnabled(int d)const{return d>=0&&d<2&&loopEnabled_[d];}
-size_t LiveEngine::loopStart(int d)const{return d>=0&&d<2?loopStart_[d]:0;}
-size_t LiveEngine::loopEnd(int d)const{return d>=0&&d<2?loopEnd_[d]:0;}
+void LiveEngine::clearLoop(int d){if(d<0||d>=4)throw std::invalid_argument("Deck");loopEnabled_[d]=false;}
+bool LiveEngine::loopEnabled(int d)const{return d>=0&&d<4&&loopEnabled_[d];}
+size_t LiveEngine::loopStart(int d)const{return d>=0&&d<4?loopStart_[d]:0;}
+size_t LiveEngine::loopEnd(int d)const{return d>=0&&d<4?loopEnd_[d]:0;}
 void LiveEngine::setHotCue(int d,int slot){
- if(d<0||d>1||slot<0||slot>=4)throw std::invalid_argument("Hot cue index");
+ if(d<0||d>=4||slot<0||slot>=4)throw std::invalid_argument("Hot cue index");
  if(!length(d))throw std::invalid_argument("No track loaded");
  hotCues_[d][slot]=std::min(position(d),length(d)-1);hotCueSet_[d][slot]=true;
 }
 bool LiveEngine::triggerHotCue(int d,int slot){
- if(d<0||d>1||slot<0||slot>=4)throw std::invalid_argument("Hot cue index");
+ if(d<0||d>=4||slot<0||slot>=4)throw std::invalid_argument("Hot cue index");
  if(!hotCueSet_[d][slot])return false;
  seek(d,hotCues_[d][slot]);return true;
 }
-bool LiveEngine::hasHotCue(int d,int slot)const{return d>=0&&d<2&&slot>=0&&slot<4&&hotCueSet_[d][slot];}
+bool LiveEngine::hasHotCue(int d,int slot)const{return d>=0&&d<4&&slot>=0&&slot<4&&hotCueSet_[d][slot];}
 void LiveEngine::setCrossfader(double x){mixer_.setCrossfader(x);}
 void LiveEngine::setMaster(double m){mixer_.setMasterGain(m);}
 void LiveEngine::setGain(int d,double g){mixer_.setDeckGain(d,g);}
+void LiveEngine::setChannelFader(int d,double value){mixer_.setChannelFader(d,value);}
+void LiveEngine::setFilter(int d,double value){mixer_.setFilter(d,value);}
 void LiveEngine::setEQ(int d,double l,double m,double h){mixer_.setEQ(d,l,m,h);}
 void LiveEngine::setCue(int d,bool enabled){
- if(d<0||d>1)throw std::invalid_argument("Deck");
+ if(d<0||d>=4)throw std::invalid_argument("Deck");
  cueEnabled_[d]=enabled;
 }
 void LiveEngine::setCueGain(double gain){
  if(!std::isfinite(gain))throw std::invalid_argument("Invalid Cue gain");
  cueGain_=std::clamp(gain,0.,1.);
 }
-BeatAnalysis LiveEngine::beatAnalysis(int d) const {return (d>=0&&d<2)?beat_[d]:BeatAnalysis{};}
-void LiveEngine::setBeatAnalysis(int d,BeatAnalysis a){if(d<0||d>1)throw std::invalid_argument("Deck");beat_[d]=a;}
-bool LiveEngine::syncEnabled(int d)const{return d>=0&&d<2&&sync_[d];}
-double LiveEngine::playbackRate(int d)const{return(d>=0&&d<2)?rates_[d]:1.;}
-void LiveEngine::setSync(int d,bool on){if(d<0||d>1)throw std::invalid_argument("Deck");sync_[d]=on;if(!on)rates_[d]=1.;}
+BeatAnalysis LiveEngine::beatAnalysis(int d) const {return (d>=0&&d<4)?beat_[d]:BeatAnalysis{};}
+void LiveEngine::setBeatAnalysis(int d,BeatAnalysis a){if(d<0||d>=4)throw std::invalid_argument("Deck");beat_[d]=a;}
+bool LiveEngine::syncEnabled(int d)const{return d>=0&&d<4&&sync_[d];}
+double LiveEngine::playbackRate(int d)const{return(d>=0&&d<4)?rates_[d]:1.;}
+void LiveEngine::setSync(int d,bool on){if(d<0||d>=4)throw std::invalid_argument("Deck");sync_[d]=on;if(!on)rates_[d]=1.;}
 void LiveEngine::synchronize(int follower,int leader){
- if(follower<0||follower>1||leader<0||leader>1||follower==leader)throw std::invalid_argument("Invalid deck pair");
+ if(follower<0||follower>=4||leader<0||leader>=4||follower==leader)throw std::invalid_argument("Invalid deck pair");
  const auto a=beat_[follower],b=beat_[leader];
  if(a.bpm<=0||b.bpm<=0)throw std::invalid_argument("BPM analysis required for both decks");
  // Single-speed resampling changes pitch: not a pitch-preserving time stretcher.
@@ -78,8 +80,8 @@ void LiveEngine::synchronize(int follower,int leader){
 void LiveEngine::processBuses(StereoFrame* master,StereoFrame* cue,size_t n){
  if((!master||!cue)&&n)throw std::invalid_argument("Null output");
  for(size_t i=0;i<n;++i){
-  StereoFrame in[2]{};
-  for(int d=0;d<2;++d){
+  std::array<StereoFrame,4> in{};
+  for(int d=0;d<4;++d){
    if(playing_[d]){
     if(loopEnabled_[d] && fractionalPositions_[d]>=double(loopEnd_[d])){
      const double span=double(loopEnd_[d]-loopStart_[d]);
@@ -102,13 +104,14 @@ void LiveEngine::processBuses(StereoFrame* master,StereoFrame* cue,size_t n){
     if(fractionalPositions_[d]>=tracks_[d].frames.size())playing_[d]=false;
    }
   }
-  master[i]=mixer_.process(in[0],in[1]);
+  master[i]=mixer_.process(in);
   // Pre-fader and pre-EQ Cue: crossfader and Master do not alter headphone bus.
-  const double attenuation=(cueEnabled_[0]&&cueEnabled_[1])?0.5:1.0;
-  const double a=cueEnabled_[0]?attenuation*cueGain_:0.0;
-  const double b=cueEnabled_[1]?attenuation*cueGain_:0.0;
-  cue[i]={static_cast<float>(std::clamp(in[0].left*a+in[1].left*b,-1.,1.)),
-          static_cast<float>(std::clamp(in[0].right*a+in[1].right*b,-1.,1.))};
+  int active=0;
+  for(int d=0;d<4;++d)if(cueEnabled_[d])++active;
+  const double attenuation=active>0?cueGain_/double(active):0.;
+  double cueL=0,cueR=0;
+  for(int d=0;d<4;++d)if(cueEnabled_[d]){cueL+=in[d].left*attenuation;cueR+=in[d].right*attenuation;}
+  cue[i]={float(std::clamp(cueL,-1.,1.)),float(std::clamp(cueR,-1.,1.))};
  }
 }
 void LiveEngine::process(StereoFrame* out,size_t n){

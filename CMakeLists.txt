@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MixoraDJPro VERSION 2.5.0 LANGUAGES CXX)
+project(MixoraDJPro VERSION 3.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -114,3 +114,9 @@ endif()
 
 # Package executable and Qt runtime with windeployqt using tools/package_windows.ps1.
 # Runtime plugin deployment must use the SAME Qt toolchain used for compilation.
+
+if(BUILD_TESTING)
+ add_executable(mixora_four_deck_tests tests/test_four_deck.cpp)
+ target_link_libraries(mixora_four_deck_tests PRIVATE mixora_live_engine)
+ add_test(NAME four_deck_live_engine COMMAND mixora_four_deck_tests)
+endif()
