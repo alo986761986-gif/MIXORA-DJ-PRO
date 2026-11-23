@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@v4.4.1
         with:
           version: '6.8.3'
           arch: win64_msvc2023_04
