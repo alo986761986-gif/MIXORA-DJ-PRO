@@ -17,22 +17,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-      - name: Restore verified Qt 6.8.3 MSVC2022 cache
-        id: qt-cache
-        uses: actions/cache/restore@v4
+      - uses: actions/setup-python@v5
         with:
-          path: ${{ runner.workspace }}/Qt
-          key: 'install-qt-action-windows-10.0.20348-desktop-win64_msvc2022_64-6.8.3-D:\a\MIXORA-DJ-PRO\Qt-==1.1.0-==3.3.*-qtmultimedia'
-          fail-on-cache-miss: true
-      - name: Verify cached Qt toolchain
+          python-version: '3.12'
+      - name: Install Qt MSVC2022 explicitly (without autodetect)
         shell: pwsh
         run: |
+          python -m pip install "aqtinstall==3.3.0"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install aqtinstall' }
+          python -m aqt list-qt windows desktop --arch 6.8.3
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot query Qt package metadata' }
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "$env:RUNNER_WORKSPACE/Qt" --modules qtmultimedia
+          if ($LASTEXITCODE -ne 0) { throw 'Qt 6.8.3 install failed' }
           $qtRoot = Join-Path $env:RUNNER_WORKSPACE 'Qt\6.8.3\msvc2022_64'
-          foreach ($file in @('bin\windeployqt.exe','lib\cmake\Qt6\Qt6Config.cmake','bin\Qt6Core.dll','bin\Qt6Multimedia.dll')) {
-            if (!(Test-Path (Join-Path $qtRoot $file))) { throw "Cached Qt missing: $file" }
-          }
-          Write-Host "Qt toolchain restored: $qtRoot"
+          if (!(Test-Path (Join-Path $qtRoot 'bin\windeployqt.exe'))) { throw 'Qt deploy tool missing' }
           "QT_ROOT_DIR=$qtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Qt installed at: $qtRoot"
       - name: Configure CMake
         shell: pwsh
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DBUILD_TESTING=ON
