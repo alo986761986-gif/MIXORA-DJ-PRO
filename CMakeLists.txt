@@ -1,0 +1,116 @@
+cmake_minimum_required(VERSION 3.21)
+project(MixoraDJPro VERSION 2.5.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Multimedia)
+# Optional compatibility preview of the older Qt Multimedia decks.
+# Main desktop executable below now uses the integrated shared-clock DSP player.
+option(MIXORA_BUILD_LEGACY_UI "Build old experimental deck interface" OFF)
+if(MIXORA_BUILD_LEGACY_UI)
+ qt_add_executable(mixora_legacy WIN32
+  src/main.cpp src/MainWindow.h src/MainWindow.cpp
+  src/DeckWidget.h src/DeckWidget.cpp
+  src/WaveformWidget.h src/WaveformWidget.cpp)
+ target_link_libraries(mixora_legacy PRIVATE Qt6::Core Qt6::Widgets Qt6::Multimedia)
+ set_target_properties(mixora_legacy PROPERTIES OUTPUT_NAME "MIXORA Legacy Preview")
+endif()
+# Qt-independent DSP core: independently testable; not yet wired to QMediaPlayer.
+add_library(mixora_dsp STATIC src/dsp/Mixer.h src/dsp/Mixer.cpp)
+target_compile_features(mixora_dsp PUBLIC cxx_std_17)
+target_include_directories(mixora_dsp PUBLIC src/dsp)
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(mixora_dsp_tests tests/test_mixer.cpp)
+  target_link_libraries(mixora_dsp_tests PRIVATE mixora_dsp)
+  add_test(NAME dsp_mixer COMMAND mixora_dsp_tests)
+endif()
+
+# Independent offline PCM renderer: Master and Cue share one sample clock.
+add_library(mixora_audio STATIC src/audio/Wav.h src/audio/Wav.cpp src/audio/Resample.h src/audio/Resample.cpp src/audio/Render.h src/audio/Render.cpp)
+target_link_libraries(mixora_audio PUBLIC mixora_dsp)
+target_include_directories(mixora_audio PUBLIC src/audio)
+add_executable(mixora_render src/audio/render_main.cpp)
+target_link_libraries(mixora_render PRIVATE mixora_audio)
+set_target_properties(mixora_render PROPERTIES OUTPUT_NAME "MIXORA Render")
+install(TARGETS mixora_render RUNTIME DESTINATION .)
+if(BUILD_TESTING)
+  add_executable(mixora_render_tests tests/test_render.cpp)
+  target_link_libraries(mixora_render_tests PRIVATE mixora_audio)
+  add_test(NAME offline_render COMMAND mixora_render_tests)
+endif()
+
+# Unified app entrypoint: the Live DSP engine is now the main desktop app.
+add_library(mixora_live_engine STATIC src/audio/LiveEngine.h src/audio/LiveEngine.cpp src/audio/BeatAnalysis.h src/audio/BeatAnalysis.cpp)
+target_link_libraries(mixora_live_engine PUBLIC mixora_audio)
+target_include_directories(mixora_live_engine PUBLIC src/audio)
+qt_add_executable(MixoraDJPro WIN32 src/live/main.cpp src/audio/DecodeQt.h src/audio/DecodeQt.cpp src/midi/MidiMapping.h src/midi/DeviceIdentity.h src/midi/WinMidiInput.h src/midi/WinMidiOutput.h)
+target_link_libraries(MixoraDJPro PRIVATE mixora_live_engine Qt6::Core Qt6::Widgets Qt6::Multimedia)
+set_target_properties(MixoraDJPro PROPERTIES OUTPUT_NAME "MIXORA DJ PRO")
+install(TARGETS MixoraDJPro RUNTIME DESTINATION .)
+if(BUILD_TESTING)
+ add_executable(mixora_live_tests tests/test_live.cpp)
+ target_link_libraries(mixora_live_tests PRIVATE mixora_live_engine)
+ add_test(NAME realtime_engine_pcm COMMAND mixora_live_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_cue_tests tests/test_cue.cpp)
+ target_link_libraries(mixora_cue_tests PRIVATE mixora_live_engine)
+ add_test(NAME four_channel_cue_bus COMMAND mixora_cue_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_resample_tests tests/test_resample.cpp)
+ target_link_libraries(mixora_resample_tests PRIVATE mixora_audio)
+ add_test(NAME resampling_rates COMMAND mixora_resample_tests)
+endif()
+if(WIN32)
+ target_link_libraries(MixoraDJPro PRIVATE winmm)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_beat_tests tests/test_beats.cpp)
+ target_link_libraries(mixora_beat_tests PRIVATE mixora_live_engine)
+ add_test(NAME beat_detection_and_sync COMMAND mixora_beat_tests)
+endif()
+
+# Cross-platform unit tests: WinMM capture is compiled as a stub outside Windows.
+add_library(mixora_midi STATIC src/midi/WinMidiInput.cpp src/midi/WinMidiInput.h src/midi/WinMidiOutput.cpp src/midi/WinMidiOutput.h src/midi/MidiMapping.h)
+target_include_directories(mixora_midi PUBLIC src/midi)
+target_link_libraries(MixoraDJPro PRIVATE mixora_midi)
+if(WIN32)
+ target_link_libraries(mixora_midi PUBLIC winmm)
+endif()
+if(BUILD_TESTING)
+ add_executable(mixora_midi_tests tests/test_midi_mapping.cpp)
+ target_link_libraries(mixora_midi_tests PRIVATE mixora_midi)
+ add_test(NAME midi_mapping COMMAND mixora_midi_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_midi_ports_tests tests/test_midi_ports.cpp)
+ target_link_libraries(mixora_midi_ports_tests PRIVATE mixora_midi)
+ add_test(NAME midi_ports COMMAND mixora_midi_ports_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_midi_scoped_tests tests/test_midi_scoped.cpp)
+ target_link_libraries(mixora_midi_scoped_tests PRIVATE mixora_midi)
+ add_test(NAME midi_port_isolation COMMAND mixora_midi_scoped_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_midi_identity_tests tests/test_midi_identity.cpp)
+ target_link_libraries(mixora_midi_identity_tests PRIVATE mixora_midi)
+ add_test(NAME midi_persistent_identity COMMAND mixora_midi_identity_tests)
+endif()
+
+if(BUILD_TESTING)
+ add_executable(mixora_transport_tests tests/test_transport.cpp)
+ target_link_libraries(mixora_transport_tests PRIVATE mixora_live_engine)
+ add_test(NAME transport_loop_hotcue COMMAND mixora_transport_tests)
+endif()
+
+# Package executable and Qt runtime with windeployqt using tools/package_windows.ps1.
+# Runtime plugin deployment must use the SAME Qt toolchain used for compilation.

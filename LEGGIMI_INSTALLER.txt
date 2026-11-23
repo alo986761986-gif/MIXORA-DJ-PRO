@@ -1,0 +1,17 @@
+MIXORA DJ PRO 2.5 - CREAZIONE INSTALLER WINDOWS
+
+Questo archivio NON contiene un EXE gia' compilato. Contiene i sorgenti e un workflow
+GitHub Actions per ottenere MIXORA_DJ_PRO_2_5_Setup_x64.exe su Windows Server 2022.
+
+PASSAGGI (non serve Visual Studio sul tuo PC):
+1. Crea un repository GitHub privato per MIXORA DJ PRO.
+2. Carica TUTTO il contenuto di questo archivio, inclusa la cartella nascosta .github.
+3. Apri GitHub -> Actions -> MIXORA Windows installer -> Run workflow.
+4. Se build e test passano, scarica l'artefatto MIXORA_DJ_PRO_Windows_Installer.
+5. Estrai lo ZIP dell'artefatto, poi esegui MIXORA_DJ_PRO_2_5_Setup_x64.exe.
+
+IMPORTANTE
+- Il workflow e' predisposto ma non eseguito, e potrebbe richiedere correzioni.
+- Il software e' sperimentale; non usare in esibizioni dal vivo.
+- Compatibilita' Z1/X1, routing cuffie e SYNC non collaudati su hardware reale.
+- L'installazione non richiede privilegi amministrativi (per-user).
