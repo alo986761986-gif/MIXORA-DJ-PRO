@@ -70,7 +70,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $installer = (Resolve-Path 'MIXORA_DJ_PRO_2_5_1_Setup_x64.exe').Path
-          $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
+          Write-Host "DEBUG_LAUNCH_INSTALLER=$installer"
+          $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
+          if (!$proc.WaitForExit(30000)) {
+            Write-Host "DEBUG_INSTALLER_TIMED_OUT_PID=$($proc.Id)"
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw 'Silent NSIS installation timed out after 30 seconds.'
+          }
+          Write-Host "DEBUG_INSTALLER_EXIT_CODE=$($proc.ExitCode)"
           if ($proc.ExitCode -ne 0) { throw "Silent installer exited with code $($proc.ExitCode)." }
           Write-Host "DEBUG_ENV_LOCALAPPDATA=$env:LOCALAPPDATA"
           Write-Host "DEBUG_ENV_APPDATA=$env:APPDATA"
@@ -100,7 +107,12 @@ jobs:
           if (!(Test-Path -LiteralPath $desktop)) { throw "Desktop shortcut missing: $desktop" }
           Remove-Item Env:\QT_PLUGIN_PATH -ErrorAction SilentlyContinue
           Remove-Item Env:\QML2_IMPORT_PATH -ErrorAction SilentlyContinue
-          $app = Start-Process -FilePath $installed -ArgumentList '--smoke-test' -WorkingDirectory $folder -PassThru -Wait
+          Write-Host "DEBUG_START_APP=$installed"
+          $app = Start-Process -FilePath $installed -ArgumentList '--smoke-test' -WorkingDirectory $folder -PassThru
+          if (!$app.WaitForExit(20000)) {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            throw 'Installed MIXORA app startup smoke test timed out after 20 seconds.'
+          }
           if ($app.ExitCode -ne 0) { throw "INSTALLED APP LAUNCH FAILED: exit code $($app.ExitCode)" }
           Write-Host "WINDOWS_INSTALL_SMOKE_TEST_OK: Installed EXE, Qt DLLs, Qt platform plugin, Start Menu shortcut, desktop shortcut, and startup passed."
           Get-Item -LiteralPath $installed | Select-Object FullName,Length
