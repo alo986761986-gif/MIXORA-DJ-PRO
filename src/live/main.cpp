@@ -2,6 +2,7 @@
 #include "../audio/Wav.h"
 #include "../audio/Resample.h"
 #include "../audio/DecodeQt.h"
+#include "MixoraWaveform.h"
 #include "../midi/MidiMapping.h"
 #include "../midi/DeviceIdentity.h"
 #include "../midi/WinMidiInput.h"
@@ -27,6 +28,12 @@
 #include <QTimer>
 #include <QMessageBox>
 #include <QComboBox>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QHeaderView>
+#include <QLineEdit>
+#include <QDirIterator>
+#include <QDir>
 #include <QGroupBox>
 #include <QByteArray>
 #include <QCheckBox>
@@ -93,27 +100,51 @@ public:
  }
  LiveWindow(){
   setAcceptDrops(true);
-  setWindowTitle("MIXORA DJ PRO 2.5 | MULTIFORMATO + DSP + CUE (sperimentale)");
-  setMinimumSize(800,540);
-  setStyleSheet("QWidget{background:#111a26;color:#e6f0ff;font:12px 'Segoe UI';} QPushButton{background:#28405b;border:1px solid #466077;border-radius:5px;padding:8px;} QPushButton:hover{background:#355675;} QGroupBox{border:1px solid #324759;border-radius:6px;margin-top:10px;padding:12px;} QGroupBox::title{subcontrol-origin:margin;left:12px;} QSlider::groove:horizontal{background:#43566a;height:5px;} QSlider::handle:horizontal{background:#4ac8ee;width:14px;margin:-5px 0;border-radius:7px;}");
-  auto* central=new QWidget;setCentralWidget(central);auto* root=new QVBoxLayout(central);
-  auto* title=new QLabel("MIXORA / DJ PRO 2.5");title->setStyleSheet("font-size:23px;font-weight:bold;color:#70d7f6");root->addWidget(title);
-  auto* intro=new QLabel("Due deck WAV/MP3/FLAC (secondo codec Qt) con EQ e crossfader realtime. Su interfacce a 4 canali: 1/2 Master e 3/4 Cue. Nessuna garanzia di mapping ASIO o compatibilita hardware.");intro->setWordWrap(true);root->addWidget(intro);
-  auto* outputRow=new QHBoxLayout;outputRow->addWidget(new QLabel("USCITA MASTER"));outputs_=new QComboBox;outputRow->addWidget(outputs_,1);
-  auto* refresh=new QPushButton("AGGIORNA DISPOSITIVI");outputRow->addWidget(refresh);root->addLayout(outputRow);
-  auto* routingRow=new QHBoxLayout;
-  routingRow->addWidget(new QLabel("ROUTING"));
-  routing_=new QComboBox;
-  routing_->addItem("Stereo Master 1/2 (nessun Cue fisico)",false);
-  routing_->addItem("Quad 1/2 Master + 3/4 Cue (richiede device 4ch)",true);
-  routingRow->addWidget(routing_,1);
-  routingRow->addWidget(new QLabel("CUE VOL"));
-  cueVolume_=new QSlider(Qt::Horizontal);cueVolume_->setRange(0,100);cueVolume_->setValue(70);
-  routingRow->addWidget(cueVolume_);
-  root->addLayout(routingRow);
-  connect(cueVolume_,&QSlider::valueChanged,this,[this](int v){if(engine_)engine_->setCueGain(v/100.);});
-  connect(refresh,&QPushButton::clicked,this,[this]{refreshDevices();});refreshDevices();
-  for(int d=0;d<2;++d){
+  setWindowTitle("MIXORA DJ PRO 2.6 | PERFORMANCE EDITION");
+  setMinimumSize(990,650);resize(1460,880);
+  setStyleSheet(R"CSS(
+QWidget{background:#10141b;color:#dce5ee;font:12px 'Segoe UI';}
+QLabel{background:transparent;}
+QGroupBox{background:#1a232e;border:1px solid #314253;border-radius:7px;margin-top:12px;padding:8px;}
+QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 5px;color:#a9b9cb;}
+QPushButton{background:#263747;border:1px solid #3c5266;border-radius:5px;padding:7px;font-weight:600;}
+QPushButton:checked{background:#166f9c;color:#fff;border-color:#4cc7fa;}
+QPushButton:disabled{background:#222a33;color:#637585;}
+QPushButton:hover{background:#354b5f;}
+QSlider::groove:horizontal{background:#36465a;height:6px;border-radius:3px;}
+QSlider::handle:horizontal{background:#acd7ed;width:14px;margin:-5px 0;border-radius:7px;}
+QComboBox,QLineEdit{background:#1f2c39;border:1px solid #425568;border-radius:4px;padding:5px;}
+QTreeWidget{background:#121b25;border:1px solid #293949;alternate-background-color:#1c2835;selection-background-color:#136b9c;}
+QHeaderView::section{background:#293a49;border:0;border-right:1px solid #405366;padding:6px;}
+)CSS");
+  auto* central=new QWidget;setCentralWidget(central);
+   auto* root=new QVBoxLayout(central);root->setContentsMargins(10,7,10,7);root->setSpacing(7);
+   auto* topbar=new QHBoxLayout;
+   auto* title=new QLabel("MIXORA  DJ PRO");title->setStyleSheet("font-size:25px;font-weight:800;color:#55c9fb;");
+   topbar->addWidget(title);
+   auto* subtitle=new QLabel("  PERFORMANCE EDITION / DECKS A + B");
+   subtitle->setStyleSheet("font-size:10px;color:#859aad;font-weight:700;");
+   topbar->addWidget(subtitle);topbar->addStretch();
+   auto* advancedToggle=new QPushButton("AUDIO / MIDI SETTINGS");advancedToggle->setCheckable(true);topbar->addWidget(advancedToggle);
+   root->addLayout(topbar);
+   auto* advancedPanel=new QWidget;auto* advancedLayout=new QVBoxLayout(advancedPanel);
+   advancedPanel->setVisible(false);
+   connect(advancedToggle,&QPushButton::toggled,advancedPanel,&QWidget::setVisible);
+   auto* outputRow=new QHBoxLayout;outputRow->addWidget(new QLabel("USCITA MASTER"));outputs_=new QComboBox;outputRow->addWidget(outputs_,1);
+   auto* refresh=new QPushButton("AGGIORNA DISPOSITIVI");outputRow->addWidget(refresh);advancedLayout->addLayout(outputRow);
+   auto* routingRow=new QHBoxLayout;
+   routingRow->addWidget(new QLabel("ROUTING"));
+   routing_=new QComboBox;
+   routing_->addItem("Stereo Master 1/2 (nessun Cue fisico)",false);
+   routing_->addItem("Quad 1/2 Master + 3/4 Cue (richiede device 4ch)",true);
+   routingRow->addWidget(routing_,1);
+   routingRow->addWidget(new QLabel("CUE VOL"));
+   cueVolume_=new QSlider(Qt::Horizontal);cueVolume_->setRange(0,100);cueVolume_->setValue(70);
+   routingRow->addWidget(cueVolume_);advancedLayout->addLayout(routingRow);
+   connect(cueVolume_,&QSlider::valueChanged,this,[this](int v){if(engine_)engine_->setCueGain(v/100.);});
+   connect(refresh,&QPushButton::clicked,this,[this]{refreshDevices();});refreshDevices();
+   auto* deckRow=new QHBoxLayout;deckRow->setSpacing(8);
+for(int d=0;d<2;++d){
    auto* group=new QGroupBox(d==0?"DECK A":"DECK B");auto* v=new QVBoxLayout(group);
    auto* tools=new QHBoxLayout;auto* load=new QPushButton("CARICA BRANO");tools->addWidget(load);
    names_[d]=new QLabel("Nessun file");tools->addWidget(names_[d],1);
