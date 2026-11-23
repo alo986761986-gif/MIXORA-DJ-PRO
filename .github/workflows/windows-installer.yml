@@ -72,6 +72,18 @@ jobs:
           $installer = (Resolve-Path 'MIXORA_DJ_PRO_2_5_1_Setup_x64.exe').Path
           $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
           if ($proc.ExitCode -ne 0) { throw "Silent installer exited with code $($proc.ExitCode)." }
+          Write-Host "DEBUG_ENV_LOCALAPPDATA=$env:LOCALAPPDATA"
+          Write-Host "DEBUG_ENV_APPDATA=$env:APPDATA"
+          Write-Host "DEBUG_ENV_USERPROFILE=$env:USERPROFILE"
+          Write-Host "DEBUG_HOME=$HOME"
+          $registry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MixoraDJPro' -ErrorAction SilentlyContinue
+          if ($registry) { Write-Host "DEBUG_INSTALL_REGISTRY=$($registry | ConvertTo-Json -Compress)" } else { Write-Host 'DEBUG_REGISTRY_MISSING' }
+          foreach ($scan in @((Join-Path $env:LOCALAPPDATA 'Programs'),(Join-Path $env:APPDATA 'Programs'),$env:LOCALAPPDATA,$env:ProgramFiles)) {
+            if (Test-Path $scan) {
+              Write-Host "DEBUG_SEARCH_ROOT=$scan"
+              Get-ChildItem -Path $scan -Filter 'MIXORA DJ PRO.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 10 -ExpandProperty FullName | ForEach-Object { Write-Host "DEBUG_FOUND_EXE=$_" }
+            }
+          }
           $folder = Join-Path $env:LOCALAPPDATA 'Programs\MIXORA DJ PRO'
           $installed = Join-Path $folder 'MIXORA DJ PRO.exe'
           foreach ($name in @('MIXORA DJ PRO.exe','Qt6Core.dll','Qt6Widgets.dll','Qt6Multimedia.dll')) {
