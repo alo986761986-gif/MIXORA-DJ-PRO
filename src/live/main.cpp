@@ -168,7 +168,7 @@ public:
     const auto info=engine_->beatAnalysis(d);
     if(info.bpm<=0){loopButtons_[d]->setChecked(false);status_->setText("Loop: BPM non disponibile");return;}
     const size_t duration=std::max<size_t>(1,size_t(std::llround(4.*60./info.bpm*engine_->sampleRate())));
-    const size_t start=engine_->position(d),end=std::min(engine_->length(d),start+duration);
+    const size_t start=engine_->position(d),end=(std::min)(engine_->length(d),start+duration);
     if(end<=start){loopButtons_[d]->setChecked(false);return;}
     engine_->setLoop(d,start,end);loopButtons_[d]->setText("LOOP ON");
    });
