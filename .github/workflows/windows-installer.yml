@@ -1,0 +1,57 @@
+name: MIXORA DJ PRO Windows EXE
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'installer/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/windows-installer.yml'
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source upload
+        shell: pwsh
+        run: |
+          if (!(Test-Path CMakeLists.txt) -or !(Test-Path src/live/main.cpp) -or !(Test-Path installer/MIXORA.nsi)) {
+            throw 'Missing MIXORA 2.5 source files. Upload the contents of MIXORA_DJ_PRO_2_5_GENERATORE_INSTALLER_WINDOWS.zip into the repository root first.'
+          }
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          modules: 'qtmultimedia'
+          cache: true
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DBUILD_TESTING=ON
+      - name: Compile
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Bundle Qt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory stage -Force | Out-Null
+          Copy-Item 'build/Release/MIXORA DJ PRO.exe' 'stage/MIXORA DJ PRO.exe'
+          & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --no-translations --dir stage 'stage/MIXORA DJ PRO.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Qt deploy failed' }
+      - name: Package installer
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $nsis = 'C:\Program Files (x86)\NSIS\makensis.exe'
+          if (!(Test-Path $nsis)) { throw 'NSIS not found' }
+          $stagePath = (Resolve-Path stage).Path
+          $exePath = Join-Path $PWD 'MIXORA_DJ_PRO_2_5_Setup_x64.exe'
+          & $nsis "/DSTAGEDIR=$stagePath" "/DOUTPUTFILE=$exePath" installer/MIXORA.nsi
+          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MIXORA_DJ_PRO_2_5_Windows_Setup
+          path: MIXORA_DJ_PRO_2_5_Setup_x64.exe
+          if-no-files-found: error
